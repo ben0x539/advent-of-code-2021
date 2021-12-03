@@ -6,18 +6,18 @@ use derive_more::Add;
 #[derive(Clone, Copy, Add, Default)]
 struct Vector(i32, i32);
 
-impl Sum for Vector {
-	fn sum<I: Iterator<Item=Vector>>(iter: I) -> Vector {
-		#[derive(Clone, Copy, Default)]
-		struct State {
-			pos: Vector,
-			aim: i32,
-		}
+#[derive(Clone, Copy, Default)]
+struct Submarine {
+	pos: Vector,
+	aim: i32,
+}
 
-		iter.fold(Default::default(), |acc: State, Vector(x, y)| State {
+impl Sum<Vector> for Submarine {
+	fn sum<I: Iterator<Item=Vector>>(iter: I) -> Submarine {
+		iter.fold(Default::default(), |acc: Submarine, Vector(x, y)| Submarine {
 			pos: acc.pos + Vector(x, x * acc.aim),
 			aim: acc.aim + y,
-		}).pos
+		})
 	}
 }
 
@@ -39,10 +39,10 @@ fn from_movement(s: &str) -> Result<Vector> {
 }
 
 fn main() -> Result<()> {
-	let Vector(x, y) = BufReader::new(io::stdin())
+	let Submarine { pos: Vector(x, y), .. } = BufReader::new(io::stdin())
 		.lines()
 		.map(|line| from_movement(&line?))
-		.sum::<Result<Vector>>()?;
+		.sum::<Result<_>>()?;
 	println!("{}", x*y);
 
 	Ok(())
