@@ -41,6 +41,40 @@ impl Packet {
 
 		inner(self, &mut f)
 	}
+
+	fn eval(&self) -> Result<u64> {
+		fn bin_pred(packets: &[u64], f: impl Fn(u64, u64) -> bool)
+				-> Result<u64> {
+			if packets.len() != 2 {
+					bail!("binary predicate has {} packets, not 2", packets.len());
+			}
+
+			let result = f(packets[0], packets[1]);
+			let result = if result { 1 } else { 0 };
+			Ok(result)
+		}
+
+		let result: u64 = match self.payload {
+			Payload::Literal(v) => v,
+			Payload::Operator(op, ref packets) => {
+				let values = packets.iter()
+					.map(|p| p.eval())
+					.collect::<Result<Vec<_>>>()?;
+				match op {
+					0 => values.iter().sum(),
+					1 => values.iter().product(),
+					2 => *values.iter().min().ok_or(eyre!("no packets for min"))?,
+					3 => *values.iter().max().ok_or(eyre!("no packets for max"))?,
+					5 => bin_pred(&values, |a, b| a > b)?,
+					6 => bin_pred(&values, |a, b| a < b)?,
+					7 => bin_pred(&values, |a, b| a == b)?,
+					_ => bail!("unknown operation type {}", op),
+				}
+			}
+		};
+
+		Ok(result)
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -85,18 +119,18 @@ impl<'a> Scanner<'a> {
 		let mut remaining = n;
 
 		while remaining > 0 {
-			dbg!(remaining);
+			//dbg!(remaining);
 			let bits_available = 4 - self.offset;
-			dbg!(bits_available);
+			//dbg!(bits_available);
 			let bits_count = u64::min(bits_available, remaining);
-			dbg!(bits_count);
+			//dbg!(bits_count);
 			remaining -= bits_count;
 			let x = self.read_hex()?;
-			eprintln!("x={:0>4b}", x);
+			//eprintln!("x={:0>4b}", x);
 			let mask = !(!0u64 << bits_available);
-			eprintln!("mask={:0>64}", x);
+			//eprintln!("mask={:0>64}", x);
 			let x = (x & mask) >> (bits_available - bits_count);
-			eprintln!("x={:0>4b}", x);
+			//eprintln!("x={:0>4b}", x);
 			self.offset += bits_count;
 			self.consumed += bits_count;
 			assert!(self.offset <= 4);
@@ -106,10 +140,10 @@ impl<'a> Scanner<'a> {
 			}
 			out <<= bits_count;
 			out |= x;
-			eprintln!("out={:0>64b}", x);
+			//eprintln!("out={:0>64b}", x);
 		}
 
-		eprintln!("scan_bits({}) -> {:0>len$b}", n, out, len = n as usize);
+		//eprintln!("scan_bits({}) -> {:0>len$b}", n, out, len = n as usize);
 
 		Ok(out)
 	}
@@ -129,7 +163,7 @@ impl<'a> Scanner<'a> {
 
 	fn scan_operator(&mut self) -> Result<Vec<Packet>> {
 		let length_type_id = self.scan_bits(1)?;
-		dbg!(length_type_id);
+		//dbg!(length_type_id);
 		match length_type_id {
 			0 => self.scan_operator_bit_length(),
 			1 => self.scan_operator_packet_count(),
@@ -164,7 +198,7 @@ impl<'a> Scanner<'a> {
 	fn scan_packet(&mut self) -> Result<Packet> {
 		let version = self.scan_bits(3)?;
 		let packet_type = self.scan_bits(3)?;
-		dbg!(self.consumed, version, packet_type);
+		//dbg!(self.consumed, version, packet_type);
 
 		let payload = match packet_type {
 			4 => Payload::Literal(self.scan_literal()?),
@@ -185,10 +219,11 @@ fn main() -> Result<()> {
 	let mut versions_sum = 0;
 	dbg!(&packet);
 	packet.visit_packets(|p| {
-		eprintln!("version = {}", p.version);
+		//eprintln!("version = {}", p.version);
 		versions_sum += p.version;
 		Ok(Continue)
 	})?;
-	eprintln!("\nsum = {}", versions_sum);
+	eprintln!("version sum = {}", versions_sum);
+	eprintln!("eval => {}", packet.eval()?);
 	Ok(())
 }
