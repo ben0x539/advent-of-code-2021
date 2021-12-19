@@ -156,6 +156,7 @@ const ROTATIONS: &[Rotation] = &[
 // ];
 
 
+// xs, ys need to be sorted
 #[inline]
 fn count_matches<'a, T, I>(xs: I, ys: I) -> u32
 		where T: 'a+Ord, I: IntoIterator<Item=&'a T> {
@@ -219,6 +220,8 @@ fn main() -> Result<()> {
 		let mut new_normalized_areas = Vec::new();
 		//eprintln!("unconnected scanners left: {}", remaining_areas.len());
 
+		// move all remaining areas into individual threads, leaving
+		// remaining_areas empty
 		let results = remaining_areas.drain(..).map(|candidate_area| {
 			let reference_areas = reference_areas.clone();
 			thread::spawn(move || {
@@ -237,6 +240,8 @@ fn main() -> Result<()> {
 								continue;
 							}
 
+							// reconstruct normalized coordinates from the
+							// neighbor offsets we just normalized
 							let new_normalized_area: Vec<Beacon> =
 								beacons_with_neighbors(
 									&candidate_neighbors.iter()
@@ -257,6 +262,8 @@ fn main() -> Result<()> {
 			.map(|t| t.join().unwrap());
 
 		for (maybe_remaining, maybe_result) in results {
+			// if the thread normalized things, record them and use the
+			// normalized beacons in the next generation of reference areas
 			if let Some((new_normalized, new_scanner)) = maybe_result {
 				normalized_beacons.extend(new_normalized.iter()
 					.map(|beacon| beacon.coords));
@@ -264,6 +271,8 @@ fn main() -> Result<()> {
 				normalized_scanners.push(new_scanner);
 			}
 
+			// if the thread didnn't normalize things, put the
+			// area back for the next round
 			if let Some(remaining) = maybe_remaining {
 				remaining_areas.push(remaining);
 			}
