@@ -231,15 +231,15 @@ fn main() -> Result<()> {
 		//eprintln!("unconnected scanners left: {}", remaining_areas.len());
 
 		retain_unordered(&mut remaining_areas, |candidate_area| {
-			for reference_beacon in reference_areas.iter().flatten() {
-				for candidate_beacon in &*candidate_area {
-					for &r in ROTATIONS {
-						candidate_neighbors.truncate(0);
-						candidate_neighbors.extend(
-							candidate_beacon.neighbors.iter().cloned()
-								.map(|n| n.rotate(r)));
-						candidate_neighbors.sort();
+			for candidate_beacon in &*candidate_area {
+				for &r in ROTATIONS {
+					candidate_neighbors.truncate(0);
+					candidate_neighbors.extend(
+						candidate_beacon.neighbors.iter().cloned()
+							.map(|n| n.rotate(r)));
+					candidate_neighbors.sort();
 
+					for reference_beacon in reference_areas.iter().flatten() {
 						let matches = count_matches(
 							&reference_beacon.neighbors, &candidate_neighbors);
 
