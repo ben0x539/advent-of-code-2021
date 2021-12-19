@@ -1,12 +1,12 @@
 use std::iter;
 use std::io::{self, BufRead, BufReader};
 use std::cmp::Ordering::*;
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::ops;
 
 use eyre::{Result, WrapErr, eyre, bail};
 
-#[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Clone, Copy, Hash)]
 struct Vec3 {
 	x: i32,
 	y: i32,
@@ -16,22 +16,26 @@ struct Vec3 {
 type Rotation = fn((i32, i32, i32)) -> (i32, i32, i32);
 
 impl Vec3 {
+	#[inline]
 	fn rotate(self, r: Rotation) -> Vec3 {
 		r(self.into()).into()
 	}
 }
 
 impl From<(i32, i32, i32)> for Vec3 {
+	#[inline]
 	fn from((x, y, z): (i32, i32, i32)) -> Vec3 { Vec3 { x, y, z } }
 }
 
 impl From<Vec3> for (i32, i32, i32) {
+	#[inline]
 	fn from(Vec3 { x, y, z }: Vec3) -> (i32, i32, i32) { (x, y, z) }
 }
 
 impl ops::Add for Vec3 {
 	type Output = Vec3;
 
+	#[inline]
 	fn add(self, rhs: Vec3) -> Vec3 {
 		Vec3 {
 			x: self.x + rhs.x,
@@ -44,6 +48,7 @@ impl ops::Add for Vec3 {
 impl ops::Sub for Vec3 {
 	type Output = Vec3;
 
+	#[inline]
 	fn sub(self, rhs: Vec3) -> Vec3 {
 		self + -rhs
 	}
@@ -52,6 +57,7 @@ impl ops::Sub for Vec3 {
 impl ops::Neg for Vec3 {
 	type Output = Vec3;
 
+	#[inline]
 	fn neg(self) -> Vec3 {
 		Vec3 {
 			x: -self.x,
@@ -61,7 +67,9 @@ impl ops::Neg for Vec3 {
 	}
 }
 
+#[inline]
 fn manhattan_distance(a: Vec3, b: Vec3) -> i32 {
+	#[inline]
 	fn d(a: i32, b: i32) -> i32 { i32::abs(a-b) }
 
 	d(a.x, b.x) + d(a.y, b.y) + d(a.z, b.z)
@@ -73,6 +81,7 @@ struct Beacon {
 	neighbors: Vec<Vec3>,
 }
 
+#[inline]
 fn neighbors_for_beacon<I: Iterator<Item=Vec3>>(coords: Vec3, all: I)
 		-> Vec<Vec3> {
 	let mut neighbors: Vec<_> = all.filter_map(|other|
@@ -145,6 +154,7 @@ const ROTATIONS: &[Rotation] = &[
 // ];
 
 
+#[inline]
 fn count_matches<'a, T, I>(xs: I, ys: I) -> u32
 		where T: 'a+Ord, I: IntoIterator<Item=&'a T> {
 	let mut xs = xs.into_iter();
@@ -166,6 +176,7 @@ fn count_matches<'a, T, I>(xs: I, ys: I) -> u32
 	}
 }
 
+#[inline]
 fn retain_unordered<T, F: FnMut(&mut T) -> bool>(v: &mut Vec<T>, mut f: F) {
 	let mut i = 0;
 	while i < v.len() {
@@ -206,24 +217,27 @@ fn main() -> Result<()> {
 	let initial_area = remaining_areas.pop()
 		.ok_or_else(|| eyre!("no scanners, rip"))?;
 
-	let mut normalized_beacons: BTreeSet<_> =
+	let mut normalized_beacons: HashSet<_> =
 		initial_area.iter().map(|beacon| beacon.coords).collect();
 
 	let mut reference_areas = vec![initial_area];
 
 	let mut normalized_scanners = vec![(0, 0, 0).into()];
 
+	let mut new_normalized_areas = Vec::new();
+	let mut candidate_neighbors = Vec::new();
 	while !remaining_areas.is_empty() {
+		new_normalized_areas.truncate(0);
 		//eprintln!("unconnected scanners left: {}", remaining_areas.len());
-		let mut new_normalized_areas = Vec::new();
 
 		retain_unordered(&mut remaining_areas, |candidate_area| {
 			for reference_beacon in reference_areas.iter().flatten() {
 				for candidate_beacon in &*candidate_area {
 					for &r in ROTATIONS {
-						let mut candidate_neighbors: Vec<_> =
+						candidate_neighbors.truncate(0);
+						candidate_neighbors.extend(
 							candidate_beacon.neighbors.iter().cloned()
-								.map(|n| n.rotate(r)).collect();
+								.map(|n| n.rotate(r)));
 						candidate_neighbors.sort();
 
 						let matches = count_matches(
@@ -260,7 +274,8 @@ fn main() -> Result<()> {
 			bail!("rip, {} unmatched scanners left", remaining_areas.len());
 		}
 
-		reference_areas = new_normalized_areas;
+		reference_areas.truncate(0);
+		reference_areas.extend(new_normalized_areas.drain(..));
 	}
 
 	// for (i, &Vec3 { x, y, z }) in normalized_beacons.iter().enumerate() {
