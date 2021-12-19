@@ -1,8 +1,10 @@
 use std::iter;
+use std::thread;
 use std::io::{self, BufRead, BufReader};
 use std::cmp::Ordering::*;
 use std::collections::HashSet;
 use std::ops;
+use std::sync::Arc;
 
 use eyre::{Result, WrapErr, eyre, bail};
 
@@ -176,17 +178,6 @@ fn count_matches<'a, T, I>(xs: I, ys: I) -> u32
 	}
 }
 
-#[inline]
-fn retain_unordered<T, F: FnMut(&mut T) -> bool>(v: &mut Vec<T>, mut f: F) {
-	let mut i = 0;
-	while i < v.len() {
-		match f(&mut v[i]) {
-			true => { i += 1; }
-			false => { v.swap_remove(i); }
-		}
-	}
-}
-
 fn main() -> Result<()> {
 	let mut scanner_beacon_coords = Vec::new();
 	for line in BufReader::new(io::stdin()).lines() {
@@ -220,62 +211,69 @@ fn main() -> Result<()> {
 	let mut normalized_beacons: HashSet<_> =
 		initial_area.iter().map(|beacon| beacon.coords).collect();
 
-	let mut reference_areas = vec![initial_area];
+	let mut reference_areas = Arc::new(vec![initial_area]);
 
 	let mut normalized_scanners = vec![(0, 0, 0).into()];
 
-	let mut new_normalized_areas = Vec::new();
-	let mut candidate_neighbors = Vec::new();
 	while !remaining_areas.is_empty() {
-		new_normalized_areas.truncate(0);
+		let mut new_normalized_areas = Vec::new();
 		//eprintln!("unconnected scanners left: {}", remaining_areas.len());
 
-		retain_unordered(&mut remaining_areas, |candidate_area| {
-			for candidate_beacon in &*candidate_area {
-				for &r in ROTATIONS {
-					candidate_neighbors.truncate(0);
-					candidate_neighbors.extend(
-						candidate_beacon.neighbors.iter().cloned()
-							.map(|n| n.rotate(r)));
-					candidate_neighbors.sort();
+		let results = remaining_areas.drain(..).map(|candidate_area| {
+			let reference_areas = reference_areas.clone();
+			thread::spawn(move || {
+				for candidate_beacon in &candidate_area {
+					for &r in ROTATIONS {
+						let mut candidate_neighbors: Vec<_> =
+							candidate_beacon.neighbors.iter().cloned()
+								.map(|n| n.rotate(r)).collect();
+						candidate_neighbors.sort();
 
-					for reference_beacon in reference_areas.iter().flatten() {
-						let matches = count_matches(
-							&reference_beacon.neighbors, &candidate_neighbors);
+						for reference_beacon in reference_areas.iter().flatten() {
+							let matches = count_matches(
+								&reference_beacon.neighbors, &candidate_neighbors);
 
-						if matches < 11 {
-							continue;
+							if matches < 11 {
+								continue;
+							}
+
+							let new_normalized_area: Vec<Beacon> =
+								beacons_with_neighbors(
+									&candidate_neighbors.iter()
+										.map(|&c| c + reference_beacon.coords)
+										.chain(iter::once(reference_beacon.coords))
+										.collect::<Vec<_>>());
+
+							let normalized_coords = candidate_beacon.coords.rotate(r);
+							let normalized_scanner =
+								reference_beacon.coords - normalized_coords;
+							return (None, Some((new_normalized_area, normalized_scanner)));
 						}
-
-						normalized_beacons.extend(
-							candidate_neighbors.iter()
-								.map(|&neighbor| reference_beacon.coords + neighbor));
-
-						let normalized_beacon_coords: Vec<_> =
-							candidate_neighbors.iter()
-								.map(|&c| c + reference_beacon.coords)
-								.chain(iter::once(reference_beacon.coords))
-								.collect();
-						new_normalized_areas.push(
-							beacons_with_neighbors(&normalized_beacon_coords));
-
-						let normalized_coords = candidate_beacon.coords.rotate(r);
-						normalized_scanners.push(
-							reference_beacon.coords - normalized_coords);
-						return false;
 					}
 				}
+				return (Some(candidate_area), None);
+			})
+		}).collect::<Vec<_>>().into_iter()
+			.map(|t| t.join().unwrap());
+
+		for (maybe_remaining, maybe_result) in results {
+			if let Some((new_normalized, new_scanner)) = maybe_result {
+				normalized_beacons.extend(new_normalized.iter()
+					.map(|beacon| beacon.coords));
+				new_normalized_areas.push(new_normalized);
+				normalized_scanners.push(new_scanner);
 			}
 
-			return true;
-		});
+			if let Some(remaining) = maybe_remaining {
+				remaining_areas.push(remaining);
+			}
+		}
 
 		if new_normalized_areas.is_empty() {
 			bail!("rip, {} unmatched scanners left", remaining_areas.len());
 		}
 
-		reference_areas.truncate(0);
-		reference_areas.extend(new_normalized_areas.drain(..));
+		reference_areas = Arc::new(new_normalized_areas);
 	}
 
 	// for (i, &Vec3 { x, y, z }) in normalized_beacons.iter().enumerate() {
