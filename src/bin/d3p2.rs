@@ -1,56 +1,59 @@
-use eyre::Result;
 use std::io::{self, BufRead, BufReader};
+use eyre::{Result, bail, eyre};
 
 fn main() -> Result<()> {
-    let mut ones = Vec::new();
     let lines: Vec<String> = BufReader::new(io::stdin())
          .lines()
          .map(|line| Ok(line?))
          .collect::<Result<_>>()?;
 
-    for line in &lines {
-        ones.resize(usize::max(line.len(), ones.len()), 0);
-        for (digit, counter) in line.bytes().zip(&mut ones) {
-            if digit == b'1' {
-                *counter += 1;
-            }
-        }
+    if lines.is_empty() {
+        bail!("input empty");
     }
-    dbg!(&ones);
-    let most_commons: Vec<_> = ones.iter()
-        .map(|&counter| if counter >= lines.len() / 2 { 1u8 } else { 0 })
-        .collect();
-    dbg!(&most_commons);
-    let oxygen_gen_rating = get_rating(lines.clone(), &most_commons);
+    if lines.iter().any(|l| l.len() != lines[0].len()) {
+        bail!("input not rectangular");
+    }
 
-    dbg!(&most_commons, oxygen_gen_rating);
+    let oxygen_gen_rating = get_rating(lines.clone(), true)?
+        .ok_or(eyre!("no oxygen gen rating"))?;
+    let co2_scrubber_rating = get_rating(lines.clone(), false)?
+        .ok_or(eyre!("no co2 scrubber rating"))?;
 
-    let least_commons: Vec<_> = most_commons.iter()
-        .map(|&digit| if digit == 1 { 0 } else { 1 })
-        .collect();
-    let co2_scrubber_rating = get_rating(lines.clone(), &least_commons);
+    dbg!(&oxygen_gen_rating, &co2_scrubber_rating);
 
-    dbg!(&least_commons, co2_scrubber_rating);
+    let oxygen_gen_rating = i32::from_str_radix(&oxygen_gen_rating, 2)?;
+    let co2_scrubber_rating = i32::from_str_radix(&co2_scrubber_rating, 2)?;
+
+    eprintln!("{} * {} = {}", oxygen_gen_rating, co2_scrubber_rating,
+        oxygen_gen_rating * co2_scrubber_rating);
 
     Ok(())
 }
 
-fn get_rating<'a>(mut lines: Vec<String>, desireds: &[u8]) -> Option<String> {
-    for (i, &desired) in desireds.iter().enumerate() {
-        let mut j = 0;
-        while j < lines.len() {
-            let line = &lines[j];
-            let b = line.as_bytes()[i] - b'0';
-            if b != desired {
-                lines.remove(j);
-            } else {
-                j += 1;
-            }
-            if lines.len() == 1 {
-                return lines.pop();
-            }
+fn get_rating<'a>(mut lines: Vec<String>, want_most_common: bool)
+        -> Result<Option<String>> {
+    for i in 0..lines[0].len() {
+        let mut lines_one = Vec::new();
+        let mut lines_zero = Vec::new();
+
+        for line in lines {
+            match line.as_bytes()[i] {
+                b'1' => &mut lines_one,
+                b'0' => &mut lines_zero,
+                _ => bail!("bad digit in {:?}", line),
+            }.push(line);
+        }
+
+        lines = if want_most_common == (lines_one.len() >= lines_zero.len()) {
+            lines_one
+        } else {
+            lines_zero
+        };
+
+        if lines.len() == 1 {
+            return Ok(lines.pop());
         }
     }
 
-    return None;
+    return Ok(None);
 }
