@@ -29,17 +29,25 @@ fn main() -> Result<()> {
 		}
 	}).collect::<Result<_, _>>()?;
 
-	dbg!(&lines);
+	//dbg!(&lines);
 
 	let mut grid = Vec::new();
 
 	for (p, q) in lines {
-		if p.0 != q.0 && p.1 != q.1 {
-			continue;
-		}
-
 		draw_line(&mut grid, p, q);
+		//eprintln!("{:?} -> {:?}", p, q);
 	}
+
+	//for line in &grid {
+	//	for &cell in line {
+	//		print!("{}", match cell {
+	//			0 => ' ',
+	//			_ if cell > 9 => '#',
+	//			_ => (b'0' + cell as u8) as char,
+	//		});
+	//	}
+	//	println!("");
+	//}
 
 	let count = count_intersections(&grid, 2);
 	println!("{count}");
@@ -70,6 +78,16 @@ fn draw_line(grid: &mut Vec<Vec<usize>>, Pos(x1, y1): Pos, Pos(x2, y2): Pos) {
 			ensure_fits(grid, Pos(x, y1));
 			grid[y1][x] += 1;
 		}
+	} else if abs_diff(x1, x2) == abs_diff(y1, y2) {
+		let dx = if x1 > x2 { !0 } else { 1 };
+		let dy = if y1 > y2 { !0 } else { 1 };
+		for step in 0..=abs_diff(x1, x2) {
+			let x = x1.wrapping_add(step.wrapping_mul(dx));
+			let y = y1.wrapping_add(step.wrapping_mul(dy));
+			//dbg!((x1, y1, x2, y2, dx, dy, step, x, y));
+			ensure_fits(grid, Pos(x, y));
+			grid[y][x] += 1;
+		}
 	}
 }
 
@@ -78,4 +96,12 @@ fn count_intersections(grid: &Vec<Vec<usize>>, min: usize) -> usize {
 		.flat_map(|line| line.iter().copied())
 		.filter(|&c| c >= min)
 		.count()
+}
+
+fn abs_diff(a: usize, b: usize) -> usize {
+	if a > b {
+		a - b
+	} else {
+		b - a
+	}
 }
