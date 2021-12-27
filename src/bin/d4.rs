@@ -47,6 +47,10 @@ fn main() -> Result<()> {
 		.ok_or_else(|| eyre!("nobody won"))?;
 	println!("{score}");
 
+	let score = get_last_winning_score(&mut squares, drawings.iter().copied())
+		.ok_or_else(|| eyre!("nobody won"))?;
+	println!("{score}");
+
 	Ok(())
 }
 
@@ -65,6 +69,28 @@ fn get_first_winning_score<I>(squares: &mut Vec<Square>, drawings: I)
 	}
 
 	None
+}
+
+fn get_last_winning_score<I>(squares: &mut Vec<Square>, drawings: I)
+			-> Option<i32>
+		where I: Iterator<Item=i32> {
+	let mut score = None;
+	for number in drawings {
+		for square in &mut *squares {
+			if square_won(square) {
+				continue;
+			}
+
+			mark_number_on_square(square, number);
+
+			if square_won(square) {
+				let sum = square_score(square);
+				score = Some(sum * number);
+			}
+		}
+	}
+
+	score
 }
 
 
