@@ -175,39 +175,24 @@ fn rotations() -> [M33; 24] {
 		V3([0, 0, 1]),
 	]);
 
-	let r1s: &[&[M33]] = &[
-		&[],
-		&[r_y],
-		&[r_y, r_y],
-		&[r_y, r_y, r_y],
-		&[r_z],
-		&[r_z, r_z, r_z],
-	];
-
-	let r2s: &[&[M33]] = &[
-		&[],
-		&[r_x],
-		&[r_x, r_x],
-		&[r_x, r_x, r_x],
+	let r1s: &[M33] = &[
+		id,
+		r_y,
+		r_y * r_y,
+		r_y * r_y * r_y,
+		r_z,
+		r_z * r_z * r_z,
 	];
 
 	let mut o = [id; 24];
 
 	for i in 0..r1s.len() {
-		let mut m = id;
+		let mut m = r1s[i];
 
-		for &r in r1s[i] {
-			m = r * m;
-		}
-
-		for j in 0..r2s.len() {
-			let mut m = m;
-			for &r in r2s[j] {
-				m = r * m;
-			}
-
+		for j in 0..4 {
 			//eprintln!("{:?}", m);
-			o[i*r2s.len()+j] = m;
+			o[i*4+j] = m;
+			m = r_x * m;
 		}
 	}
 
