@@ -8,113 +8,59 @@ use std::sync::Arc;
 
 use eyre::{Result, WrapErr, eyre, bail};
 
-#[derive(PartialEq, PartialOrd, Eq, Ord, Debug, Clone, Copy, Hash)]
-struct Vec3 {
-	x: i32,
-	y: i32,
-	z: i32,
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct V3([i32; 3]);
 
-impl Vec3 {
+impl ops::Add for V3 {
+	type Output = V3;
+
 	#[inline]
-	fn rotate(self, r: M33) -> Vec3 {
-		let v = V3([self.x, self.y, self.z]);
-		let V3([x, y, z]) = r * v;
-		Vec3 { x, y, z }
+	fn add(self, V3([x2, y2, z2]): V3) -> V3 {
+		let V3([x1, y1, z1]) = self;
+		V3([x1 + x2, y1 + y2, z1 + z2])
 	}
 }
 
-impl From<(i32, i32, i32)> for Vec3 {
-	#[inline]
-	fn from((x, y, z): (i32, i32, i32)) -> Vec3 { Vec3 { x, y, z } }
-}
-
-impl From<Vec3> for (i32, i32, i32) {
-	#[inline]
-	fn from(Vec3 { x, y, z }: Vec3) -> (i32, i32, i32) { (x, y, z) }
-}
-
-impl ops::Add for Vec3 {
-	type Output = Vec3;
+impl ops::Sub for V3 {
+	type Output = V3;
 
 	#[inline]
-	fn add(self, rhs: Vec3) -> Vec3 {
-		Vec3 {
-			x: self.x + rhs.x,
-			y: self.y + rhs.y,
-			z: self.z + rhs.z,
-		}
-	}
-}
-
-impl ops::Sub for Vec3 {
-	type Output = Vec3;
-
-	#[inline]
-	fn sub(self, rhs: Vec3) -> Vec3 {
+	fn sub(self, rhs: V3) -> V3 {
 		self + -rhs
 	}
 }
 
-impl ops::Neg for Vec3 {
-	type Output = Vec3;
+impl ops::Neg for V3 {
+	type Output = V3;
 
 	#[inline]
-	fn neg(self) -> Vec3 {
-		Vec3 {
-			x: -self.x,
-			y: -self.y,
-			z: -self.z,
-		}
+	fn neg(self) -> V3 {
+		let V3([x, y, z]) = self;
+		V3([-x, -y, -z])
 	}
 }
 
-#[inline]
-fn manhattan_distance(a: Vec3, b: Vec3) -> i32 {
-	#[inline]
-	fn d(a: i32, b: i32) -> i32 { i32::abs(a-b) }
-
-	d(a.x, b.x) + d(a.y, b.y) + d(a.z, b.z)
-}
-
-#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-struct Beacon {
-	coords: Vec3,
-	neighbors: Vec<Vec3>,
-}
-
-#[inline]
-fn neighbors_for_beacon<I: Iterator<Item=Vec3>>(coords: Vec3, all: I)
-		-> Vec<Vec3> {
-	let mut neighbors: Vec<_> = all.filter_map(|other|
-		match coords == other {
-			true => None,
-			false => Some(other - coords),
-		}).collect();
-	neighbors.sort();
-	neighbors
-}
-
-fn beacons_with_neighbors(beacon_coords: &[Vec3]) -> Vec<Beacon> {
-	beacon_coords.iter().map(|&coords| {
-		let neighbors =
-			neighbors_for_beacon(coords, beacon_coords.iter().cloned());
-		Beacon { coords, neighbors }
-	}).collect()
-}
-
-#[derive(Debug, Clone, Copy)]
-struct V3([i32; 3]);
 #[derive(Debug, Clone, Copy)]
 struct M33([V3; 3]);
 
+impl From<[i32; 3]> for V3 {
+	#[inline]
+	fn from(v: [i32; 3]) -> V3 { V3(v) }
+}
+
+impl<T: Into<V3>> From<[T; 3]> for M33 {
+	#[inline]
+	fn from([x, y, z]: [T; 3]) -> M33 { M33([x.into(), y.into(), z.into()]) }
+}
+
 impl M33 {
 	fn transpose(self) -> M33 {
-		M33([
-			V3([self.0[0].0[0], self.0[1].0[0], self.0[2].0[0]]),
-			V3([self.0[0].0[1], self.0[1].0[1], self.0[2].0[1]]),
-			V3([self.0[0].0[2], self.0[1].0[2], self.0[2].0[2]]),
-		])
+		let M33([V3(m1), V3(m2), V3(m3)]) = self;
+		[
+			[m1[0], m2[0], m3[0]],
+			[m1[1], m2[1], m3[1]],
+			[m1[2], m2[2], m3[2]],
+		].into()
 	}
 }
 
@@ -122,17 +68,13 @@ impl ops::Mul<V3> for M33 {
 	type Output = V3;
 
 	fn mul(self, rhs: V3) -> V3 {
-		V3([
-			self.0[0].0[0] * rhs.0[0] +
-			self.0[0].0[1] * rhs.0[1] +
-			self.0[0].0[2] * rhs.0[2],
-			self.0[1].0[0] * rhs.0[0] +
-			self.0[1].0[1] * rhs.0[1] +
-			self.0[1].0[2] * rhs.0[2],
-			self.0[2].0[0] * rhs.0[0] +
-			self.0[2].0[1] * rhs.0[1] +
-			self.0[2].0[2] * rhs.0[2],
-		])
+		let M33([V3(m1), V3(m2), V3(m3)]) = self;
+		let V3([x, y, z]) = rhs;
+		[
+			m1[0] * x + m1[1] * y + m1[2] * z,
+			m2[0] * x + m2[1] * y + m2[2] * z,
+			m3[0] * x + m3[1] * y + m3[2] * z,
+		].into()
 	}
 }
 
@@ -140,40 +82,40 @@ impl ops::Mul for M33 {
 	type Output = M33;
 
 	fn mul(self, rhs: M33) -> M33 {
+		let [v1, v2, v3] = self.0;
 		let r = rhs.transpose();
-		M33([
-			r * self.0[0],
-			r * self.0[1],
-			r * self.0[2],
-		])
+		[
+			r * v1,
+			r * v2,
+			r * v3,
+		].into()
 	}
 }
 
-#[inline]
 fn rotations() -> [M33; 24] {
-	let id = M33([
-		V3([1, 0, 0]),
-		V3([0, 1, 0]),
-		V3([0, 0, 1]),
-	]);
+	let id: M33 = [
+		[1, 0, 0],
+		[0, 1, 0],
+		[0, 0, 1],
+	].into();
 
-	let r_x = M33([
-		V3([1, 0, 0]),
-		V3([0, 0, 1]),
-		V3([0, -1, 0]),
-	]);
+	let r_x: M33 = [
+		[1, 0, 0],
+		[0, 0, 1],
+		[0, -1, 0],
+	].into();
 
-	let r_y = M33([
-		V3([0, 0, -1]),
-		V3([0, 1, 0]),
-		V3([1, 0, 0]),
-	]);
+	let r_y: M33 = [
+		[0, 0, -1],
+		[0, 1, 0],
+		[1, 0, 0],
+	].into();
 
-	let r_z = M33([
-		V3([0, 1, 0]),
-		V3([-1, 0, 0]),
-		V3([0, 0, 1]),
-	]);
+	let r_z = [
+		[ 0, 1, 0],
+		[-1, 0, 0],
+		[ 0, 0, 1],
+	].into();
 
 	let r1s: &[M33] = &[
 		id,
@@ -190,13 +132,44 @@ fn rotations() -> [M33; 24] {
 		let mut m = r1s[i];
 
 		for j in 0..4 {
-			//eprintln!("{:?}", m);
 			o[i*4+j] = m;
 			m = r_x * m;
 		}
 	}
 
 	o
+}
+
+#[inline]
+fn manhattan_distance(a: V3, b: V3) -> i32 {
+	let V3([x, y, z]) = a - b;
+	x.abs() + y.abs() + z.abs()
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+struct Beacon {
+	coords: V3,
+	neighbors: Vec<V3>,
+}
+
+#[inline]
+fn neighbors_for_beacon<I: Iterator<Item=V3>>(coords: V3, all: I)
+		-> Vec<V3> {
+	let mut neighbors: Vec<_> = all.filter_map(|other|
+		match coords == other {
+			true => None,
+			false => Some(other - coords),
+		}).collect();
+	neighbors.sort();
+	neighbors
+}
+
+fn beacons_with_neighbors(beacon_coords: &[V3]) -> Vec<Beacon> {
+	beacon_coords.iter().map(|&coords| {
+		let neighbors =
+			neighbors_for_beacon(coords, beacon_coords.iter().cloned());
+		Beacon { coords, neighbors }
+	}).collect()
 }
 
 // xs, ys need to be sorted
@@ -234,11 +207,11 @@ fn main() -> Result<()> {
 			let mut coords = line.split(',')
 				.map(|s| s.parse::<i32>()
 					.with_context(|| eyre!("weird coord in {}", line)));
-			let coords = Vec3 {
-				x: coords.next().ok_or_else(|| eyre!("missing coord"))??,
-				y: coords.next().ok_or_else(|| eyre!("missing coord"))??,
-				z: coords.next().ok_or_else(|| eyre!("missing coord"))??,
-			};
+			let coords = V3([
+				coords.next().ok_or_else(|| eyre!("missing coord"))??,
+				coords.next().ok_or_else(|| eyre!("missing coord"))??,
+				coords.next().ok_or_else(|| eyre!("missing coord"))??,
+			]);
 			scanner_beacon_coords
 				.last_mut().ok_or_else(|| eyre!("wtf no scanner"))?
 				.push(coords);
@@ -257,7 +230,7 @@ fn main() -> Result<()> {
 
 	let mut reference_areas = Arc::new(vec![initial_area]);
 
-	let mut normalized_scanners = vec![(0, 0, 0).into()];
+	let mut normalized_scanners = vec![[0, 0, 0].into()];
 
 	let rotations = rotations();
 
@@ -274,7 +247,7 @@ fn main() -> Result<()> {
 					for r in rotations {
 						let mut candidate_neighbors: Vec<_> =
 							candidate_beacon.neighbors.iter().cloned()
-								.map(|n| n.rotate(r)).collect();
+								.map(|n| r * n).collect();
 						candidate_neighbors.sort();
 
 						for reference_beacon in reference_areas.iter().flatten() {
@@ -294,7 +267,7 @@ fn main() -> Result<()> {
 										.chain(iter::once(reference_beacon.coords))
 										.collect::<Vec<_>>());
 
-							let normalized_coords = candidate_beacon.coords.rotate(r);
+							let normalized_coords = r * candidate_beacon.coords;
 							let normalized_scanner =
 								reference_beacon.coords - normalized_coords;
 							return (None, Some((new_normalized_area, normalized_scanner)));
@@ -330,11 +303,11 @@ fn main() -> Result<()> {
 		reference_areas = Arc::new(new_normalized_areas);
 	}
 
-	// for (i, &Vec3 { x, y, z }) in normalized_beacons.iter().enumerate() {
+	// for (i, &V3([x, y, z])) in normalized_beacons.iter().enumerate() {
 	// 	println!("beacon {i:>3}:   {x:>5}, {y:>5}, {z:>5}");
 	// }
 
-	// for (i, &Vec3 { x, y, z }) in normalized_scanners.iter().enumerate() {
+	// for (i, &V3([x, y, z])) in normalized_scanners.iter().enumerate() {
 	// 	println!("scanner {i:>3}:   {x:>5}, {y:>5}, {z:>5}");
 	// }
 
