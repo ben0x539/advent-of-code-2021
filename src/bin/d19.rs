@@ -15,12 +15,12 @@ struct Vec3 {
 	z: i32,
 }
 
-type Rotation = fn((i32, i32, i32)) -> (i32, i32, i32);
-
 impl Vec3 {
 	#[inline]
-	fn rotate(self, r: Rotation) -> Vec3 {
-		r(self.into()).into()
+	fn rotate(self, r: M33) -> Vec3 {
+		let v = V3([self.x, self.y, self.z]);
+		let V3([x, y, z]) = r * v;
+		Vec3 { x, y, z }
 	}
 }
 
@@ -103,58 +103,116 @@ fn beacons_with_neighbors(beacon_coords: &[Vec3]) -> Vec<Beacon> {
 	}).collect()
 }
 
-const ROTATIONS: &[Rotation] = &[
-	|(x, y, z)| ( x,  y,  z),
-	|(x, y, z)| ( x,  z, -y), // rotation around +x
-	|(x, y, z)| ( x, -y, -z),
-	|(x, y, z)| ( x, -z,  y),
+#[derive(Debug, Clone, Copy)]
+struct V3([i32; 3]);
+#[derive(Debug, Clone, Copy)]
+struct M33([V3; 3]);
 
-	|(x, y, z)| (-x,  y, -z),
-	|(x, y, z)| (-x, -y,  z),
-	|(x, y, z)| (-x, -z, -y),
-	|(x, y, z)| (-x,  z,  y),
+impl M33 {
+	fn transpose(self) -> M33 {
+		M33([
+			V3([self.0[0].0[0], self.0[1].0[0], self.0[2].0[0]]),
+			V3([self.0[0].0[1], self.0[1].0[1], self.0[2].0[1]]),
+			V3([self.0[0].0[2], self.0[1].0[2], self.0[2].0[2]]),
+		])
+	}
+}
 
-	|(x, y, z)| ( y,  z,  x), 
-	|(x, y, z)| ( y, -z, -x),
-	|(x, y, z)| ( y,  x, -z),
-	|(x, y, z)| ( y, -x,  z), // rotation around +z
+impl ops::Mul<V3> for M33 {
+	type Output = V3;
 
-	|(x, y, z)| (-y,  x,  z),
-	|(x, y, z)| (-y, -x, -z),
-	|(x, y, z)| (-y, -z,  x),
-	|(x, y, z)| (-y,  z, -x),
+	fn mul(self, rhs: V3) -> V3 {
+		V3([
+			self.0[0].0[0] * rhs.0[0] +
+			self.0[0].0[1] * rhs.0[1] +
+			self.0[0].0[2] * rhs.0[2],
+			self.0[1].0[0] * rhs.0[0] +
+			self.0[1].0[1] * rhs.0[1] +
+			self.0[1].0[2] * rhs.0[2],
+			self.0[2].0[0] * rhs.0[0] +
+			self.0[2].0[1] * rhs.0[1] +
+			self.0[2].0[2] * rhs.0[2],
+		])
+	}
+}
 
-	|(x, y, z)| ( z,  x,  y),
-	|(x, y, z)| ( z, -x, -y),
-	|(x, y, z)| ( z, -y,  x),
-	|(x, y, z)| ( z,  y, -x),
+impl ops::Mul for M33 {
+	type Output = M33;
 
-	|(x, y, z)| (-z, -x,  y),
-	|(x, y, z)| (-z,  x, -y),
-	|(x, y, z)| (-z,  y,  x), // rotation around +y
-	|(x, y, z)| (-z, -y, -x),
-];
+	fn mul(self, rhs: M33) -> M33 {
+		let r = rhs.transpose();
+		M33([
+			r * self.0[0],
+			r * self.0[1],
+			r * self.0[2],
+		])
+	}
+}
 
-// let permutations: &[fn((i32, i32, i32)) -> (i32, i32, i32)] = &[
-// 	|(x, y, z)| (x, y, z),
-// 	|(x, y, z)| (y, z, x),
-// 	|(x, y, z)| (z, x, y),
-// 	|(x, y, z)| (x, z, y),
-// 	|(x, y, z)| (z, y, x),
-// 	|(x, y, z)| (y, x, z),
-// ];
+#[inline]
+fn rotations() -> [M33; 24] {
+	let id = M33([
+		V3([1, 0, 0]),
+		V3([0, 1, 0]),
+		V3([0, 0, 1]),
+	]);
 
-// let flips: &[fn((i32, i32, i32)) -> (i32, i32, i32)] = &[
-// 	|(x, y, z)| (x, y, z),
-// 	|(x, y, z)| (x, y, -z),
-// 	|(x, y, z)| (x, -y, z),
-// 	|(x, y, z)| (x, -y, -z),
-// 	|(x, y, z)| (-x, y, z),
-// 	|(x, y, z)| (-x, y, -z),
-// 	|(x, y, z)| (-x, -y, z),
-// 	|(x, y, z)| (-x, -y, -z),
-// ];
+	let r_x = M33([
+		V3([1, 0, 0]),
+		V3([0, 0, 1]),
+		V3([0, -1, 0]),
+	]);
 
+	let r_y = M33([
+		V3([0, 0, -1]),
+		V3([0, 1, 0]),
+		V3([1, 0, 0]),
+	]);
+
+	let r_z = M33([
+		V3([0, 1, 0]),
+		V3([-1, 0, 0]),
+		V3([0, 0, 1]),
+	]);
+
+	let r1s: &[&[M33]] = &[
+		&[],
+		&[r_y],
+		&[r_y, r_y],
+		&[r_y, r_y, r_y],
+		&[r_z],
+		&[r_z, r_z, r_z],
+	];
+
+	let r2s: &[&[M33]] = &[
+		&[],
+		&[r_x],
+		&[r_x, r_x],
+		&[r_x, r_x, r_x],
+	];
+
+	let mut o = [id; 24];
+
+	for i in 0..r1s.len() {
+		let mut m = id;
+
+		for &r in r1s[i] {
+			m = r * m;
+		}
+
+		for j in 0..r2s.len() {
+			let mut m = m;
+			for &r in r2s[j] {
+				m = r * m;
+			}
+
+			//eprintln!("{:?}", m);
+			o[i*r2s.len()+j] = m;
+		}
+	}
+
+	o
+}
 
 // xs, ys need to be sorted
 #[inline]
@@ -216,6 +274,8 @@ fn main() -> Result<()> {
 
 	let mut normalized_scanners = vec![(0, 0, 0).into()];
 
+	let rotations = rotations();
+
 	while !remaining_areas.is_empty() {
 		let mut new_normalized_areas = Vec::new();
 		//eprintln!("unconnected scanners left: {}", remaining_areas.len());
@@ -226,7 +286,7 @@ fn main() -> Result<()> {
 			let reference_areas = reference_areas.clone();
 			thread::spawn(move || {
 				for candidate_beacon in &candidate_area {
-					for &r in ROTATIONS {
+					for r in rotations {
 						let mut candidate_neighbors: Vec<_> =
 							candidate_beacon.neighbors.iter().cloned()
 								.map(|n| n.rotate(r)).collect();
